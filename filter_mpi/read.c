@@ -71,6 +71,9 @@ void read_input(flag_st *flag, grid_st *grid, index_st *ist, par_st *par, parall
   par->NL_lambda_min = 0.0; // NL projector spectral bounds (set in init_NL_projectors); 0 => no NL energy-range pad
   par->NL_lambda_max = 0.0;
   flag->LSD = 0;         // By default, do not add local structure dependent corrections
+  flag->spinPolarized = 0; // By default, a single (spin-restricted) Hamiltonian is built
+  par->spin_channel = 0;   // 0 = spin up, 1 = spin down (only used when spinPolarized)
+  par->file_tag[0] = '\0'; // appended to eval/psi/output names; empty for non-spin-pol runs
   ist->nproj = 5;        // number of terms to expand projections in. converged by 5
   par->t_rev_factor = 1; // can time rev filt'rd states to get 2X eigst8. mem alloc multiplied by par.t_rev_factor
   flag->noTimeRev = 1;   // By default, do not time reverse Filtered states
@@ -275,6 +278,16 @@ void read_input(flag_st *flag, grid_st *grid, index_st *ist, par_st *par, parall
       else if (!strcmp(field, "localStructureDependent"))
       {
         flag->LSD = (int)strtol(tmp, &endptr, 10);
+        if (*endptr != '\0')
+        {
+          if (mpir == 0)
+            printf("Error converting string to double.\n");
+          exit(EXIT_FAILURE);
+        }
+      }
+      else if (!strcmp(field, "spinPolarized"))
+      {
+        flag->spinPolarized = (int)strtol(tmp, &endptr, 10);
         if (*endptr != '\0')
         {
           if (mpir == 0)
@@ -837,6 +850,7 @@ void read_input(flag_st *flag, grid_st *grid, index_st *ist, par_st *par, parall
           printf("KEmax = double (maximum kinetic energy value considered)\n");
           printf("spinOrbit = int (0 for no spinOrbit, 1 for spinOrbit)\n");
           printf("NonLocal = int (0 for no non-local, 1 for non-local potential)\n");
+          printf("spinPolarized = int (if 1, build two Hamiltonians from pot<X>_up.par/pot<X>_dn.par and write eval_up.dat/eval_dn.dat; requires spinOrbit=0)\n");
           printf("noTimeRev = int (0 to time reverse, 1 for no time reversal)\n");
           printf("approxEnergyRange = int, if 1 then energy range will be appox'd by local pot\n");
           printf("setTargets = int (0 if half/half split of VB/CB targets suffices for your job)\n");
@@ -935,6 +949,46 @@ void read_input(flag_st *flag, grid_st *grid, index_st *ist, par_st *par, parall
   if (1 == flag->periodic)
   {
     flag->isComplex = 1;
+  }
+  // Collinear spin polarization: two independent scalar Hamiltonians (up/down)
+  // built from two local pseudopotentials. It keeps the real, non-spinor path and
+  // is incompatible with the operators/paths that couple or complexify the two
+  // spin channels, or that change the local-potential file naming. Fail loudly
+  // rather than silently producing wrong physics or reading the wrong pot files.
+  if (1 == flag->spinPolarized)
+  {
+    if ((1 == flag->SO) || (1 == flag->useSpinors))
+    {
+      if (mpir == 0)
+        fprintf(stderr, "ERROR: spinPolarized is incompatible with spinOrbit/useSpinors "
+                        "(collinear spin polarization keeps the spin channels separate).\n");
+      exit(EXIT_FAILURE);
+    }
+    if (1 == flag->periodic)
+    {
+      if (mpir == 0)
+        fprintf(stderr, "ERROR: spinPolarized is not supported on the periodic path yet.\n");
+      exit(EXIT_FAILURE);
+    }
+    if (1 == flag->interpolatePot)
+    {
+      if (mpir == 0)
+        fprintf(stderr, "ERROR: spinPolarized does not support interpolatePot "
+                        "(cubic/ortho geometry interpolation of the local potential).\n");
+      exit(EXIT_FAILURE);
+    }
+    if (1.0 != par->scale_surface_Cs)
+    {
+      if (mpir == 0)
+        fprintf(stderr, "ERROR: spinPolarized does not support scaleSurfaceCs != 1.0.\n");
+      exit(EXIT_FAILURE);
+    }
+    if (0 != flag->restartFromCheckpoint)
+    {
+      if (mpir == 0)
+        fprintf(stderr, "ERROR: spinPolarized does not support restarting from a checkpoint.\n");
+      exit(EXIT_FAILURE);
+    }
   }
   if (flag->interpolatePot == 1)
   {
@@ -1331,8 +1385,13 @@ void read_pot(pot_st *pot, xyz_st *R, atom_info *atom, index_st *ist, par_st *pa
         // This is the default path.
         if (1.0 == par->scale_surface_Cs)
         {
-          // The standard format for the file names is pot[atype].dat
+          // The standard format for the file names is pot[atype].par. When running a
+          // collinear spin-polarized job, each spin channel reads its own local
+          // pseudopotential: pot[atype]_up.par (spin_channel 0) or pot[atype]_dn.par
+          // (spin_channel 1). The non-spin-polarized name pot[atype].par is unchanged.
           sprintf(str, "pot%c%c%c", atype[0], atype[1], atype[2]);
+          if (1 == flag->spinPolarized)
+            strcat(str, (par->spin_channel == 0) ? "_up" : "_dn");
           strcat(str, ".par");
 
           pf = fopen(str, "r");

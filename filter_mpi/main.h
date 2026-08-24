@@ -10,5 +10,6 @@
 #include "mod_sigma.h"
 #include "mod_output.h"
 #include "mod_optional_output.h"
+#include "mod_spinpol.h"
 
 /************************************************************/

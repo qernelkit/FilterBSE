@@ -32,6 +32,16 @@ void mod_output(
   long eig = 0;
   int *conv = NULL;
 
+  // Output file names carry the spin tag (par->file_tag) so each spin channel of a
+  // spin-polarized run writes its own eval/psi/output files. For a normal run
+  // file_tag is "", giving the historical names eval.dat / psi.dat / output.dat.
+  char eval_name[32];
+  char psi_name[32];
+  char output_name[32];
+  snprintf(eval_name, sizeof(eval_name), "eval%s.dat", par->file_tag);
+  snprintf(psi_name, sizeof(psi_name), "psi%s.dat", par->file_tag);
+  snprintf(output_name, sizeof(output_name), "output%s.dat", par->file_tag);
+
   /************************************************************/
   /*******************   WRITE ALL STATES   *******************/
   /************************************************************/
@@ -43,9 +53,9 @@ void mod_output(
     printf(
         "\ngetAllStates flag on\nWriting all eigenstates to disk\n");
 
-    write_eval_dat(eig_vals, sigma_E, mn, "eval.dat");
+    write_eval_dat(eig_vals, sigma_E, mn, eval_name);
 
-    write_psi_dat(psitot, mn * stlen, "psi.dat");
+    write_psi_dat(psitot, mn * stlen, psi_name);
   }
 
   /************************************************************/
@@ -75,11 +85,11 @@ void mod_output(
     }
 
     //
-    write_eval_dat(eig_vals, sigma_E, mn, "eval.dat");
+    write_eval_dat(eig_vals, sigma_E, mn, eval_name);
     //
 
     // Write the converged psi.dat
-    ppsi = fopen("psi.dat", "w");
+    ppsi = fopen(psi_name, "w");
 
     if (ppsi == NULL)
     {
@@ -155,7 +165,7 @@ void mod_output(
   if (0 != flag->saveOutput)
   {
     save_output(
-        "output.dat", psitot, eig_vals, sigma_E, R, grid, ist, par, flag, parallel);
+        output_name, psitot, eig_vals, sigma_E, R, grid, ist, par, flag, parallel);
   }
 
   return;

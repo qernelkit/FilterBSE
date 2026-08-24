@@ -88,6 +88,13 @@ typedef struct flag
   int periodic;
   int useGaussianBasis;
   int readKPath;
+
+  // Collinear spin polarization (total magnetization): two independent scalar
+  // Hamiltonians (spin up / spin down) built from two local pseudopotentials and
+  // filter-ortho-diagonalized separately. Mutually exclusive with spin-orbit /
+  // spinors (SO couples the spin channels; collinear polarization keeps them
+  // separate). Non-local is allowed and shared between channels.
+  int spinPolarized;
 } flag_st;
 
 /************************************************************/
@@ -236,6 +243,14 @@ typedef struct par
   // Periodic parameters
   double box_z;
   int diag_k_idx;
+
+  // Collinear spin-polarization bookkeeping (flag->spinPolarized). spin_channel
+  // selects which local pseudopotential read_pot loads (0 = up -> pot<X>_up.par,
+  // 1 = down -> pot<X>_dn.par). file_tag is appended to the eval/psi/output file
+  // names so each spin channel writes its own results; it is "" for a normal
+  // (non-spin-polarized) run, leaving the default file names unchanged.
+  int spin_channel;
+  char file_tag[8];
 
   // Per-k Hamiltonian spectrum bounds (n_k_pts elements each, indexed by global
   // k index). The kinetic energy is k-dependent, so the spectrum range -- and the

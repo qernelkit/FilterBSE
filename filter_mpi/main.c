@@ -128,6 +128,26 @@ int main(int argc, char *argv[])
       pot_local, &pot, R, atom, &grid, LS, nlc, nl, SO_projectors,
       &ist, &par, &flag, &parallel);
 
+  // Collinear spin-polarized runs build two independent scalar Hamiltonians
+  // (spin up / spin down) that differ only in their local potential, and run the
+  // full non-periodic filter->ortho->diag->sigma->output pipeline once per spin
+  // channel, writing eval_up.dat / eval_dn.dat. This path is mutually exclusive
+  // with the checkpoint/restart switch below (rejected in read_input), so it is
+  // handled here and the restart switch is skipped.
+  if (1 == flag.spinPolarized)
+  {
+    // The psi_rank buffer allocated by mod_mem_alloc is unused here; run_spinpol
+    // allocates and frees its own per-channel buffer.
+    free(psi_rank);
+    psi_rank = NULL;
+
+    run_spinpol(
+        psi, phi, pot_local, &pot, R, atom, &grid, LS, nlc, nl, an, zn,
+        ene_targets, ksqr, &lattice, G_vecs, k_vecs, eig_vals, sigma_E,
+        &ist, &par, &flag, &parallel);
+  }
+  else
+  {
   // This code supports restarting the job from a saved state.
   // See save.c for formatting of checkpoint files.
   // See read_input in read.c for specifying the checkpoint restart
@@ -303,12 +323,15 @@ int main(int argc, char *argv[])
       }
     }
   } // end switch
+  } // end else (non-spin-polarized path)
 
   /************************************************************/
   /*****************  OPTIONAL OUTPUT MODULE  *****************/
   /************************************************************/
+  /*** Skipped for spin-polarized runs: run_spinpol already calls   ***/
+  /*** mod_optional_output per spin channel (and frees psitot).     ***/
 
-  if ((0 == mpir) && (0 == flag.periodic))
+  if ((0 == mpir) && (0 == flag.periodic) && (0 == flag.spinPolarized))
   {
     mod_optional_output(psitot, &grid, &ist, &par, &flag, &parallel);
   }
